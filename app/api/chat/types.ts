@@ -105,4 +105,5 @@ export type SSEEvent =
     | { type: 'text'; data: { content: string } }
     | { type: 'token'; data: { content: string } }
     | { type: 'complete'; data: { threadId: string; response: string } }
+    | { type: 'query_suggestions'; data: { suggestions: string[]; thematic: string; confidence: number } }
     | { type: 'error'; data: { error: string; details?: string } };

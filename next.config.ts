@@ -1,15 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Proxy configuration for Rust chatbot backend
-  async rewrites() {
-    return [
-      {
-        source: '/api/chat/:path*',
-        destination: 'https://rust-chatbot-service.onrender.com/:path*',
-      },
-    ];
-  },
+  // NOTE: Proxy to Rust backend is DISABLED to use local TypeScript agent
+  // Uncomment to re-enable Rust chatbot:
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/api/chat/:path*',
+  //       destination: 'https://rust-chatbot-service.onrender.com/:path*',
+  //     },
+  //   ];
+  // },
 
   // Optimize images
   images: {
@@ -22,11 +23,40 @@ const nextConfig: NextConfig = {
 
   // Performance optimizations
   experimental: {
-    optimizePackageImports: ['lucide-react', '@tensorflow/tfjs'],
+    optimizePackageImports: ['lucide-react'],
+    // Don't optimize TensorFlow.js - we handle it manually via dynamic imports
+  },
+
+  // Webpack configuration for TensorFlow.js Node
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Exclude TensorFlow.js Node native bindings from webpack bundling
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@tensorflow/tfjs-node': 'commonjs @tensorflow/tfjs-node',
+      });
+
+      // Ignore specific problematic files in tfjs-node
+      config.module = config.module || {};
+      config.module.noParse = config.module.noParse || [];
+      config.module.noParse.push(
+        /@tensorflow\/tfjs-node\/node_modules\/@mapbox\/node-pre-gyp/
+      );
+    }
+
+    return config;
   },
 
   // Turbopack configuration (empty to silence warning)
   turbopack: {},
+
+  // Server-side externals for native modules
+  // This tells Next.js to not bundle these packages and load them externally
+  serverExternalPackages: [
+    '@tensorflow/tfjs-node',
+    '@mapbox/node-pre-gyp',
+    'node-pre-gyp',
+  ],
 };
 
 export default nextConfig;

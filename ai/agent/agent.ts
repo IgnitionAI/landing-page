@@ -141,7 +141,103 @@ class MyFirstAgent {
             }
         });
         
-        this.tools = [...mcpTools, getCurrentDateTool]; 
+        // Outil RAG Vector Search
+        const { ragService } = await import('../rag/rag-service');
+        await ragService.initialize();
+
+        const ragSearchTool = new DynamicStructuredTool({
+            name: "search_knowledge_base",
+            description: "Basic semantic search in the knowledge base. Use this for simple queries. For better results on complex queries, use advanced_knowledge_search instead.",
+            schema: z.object({
+                query: z.string().describe("The search query to find relevant information in the knowledge base"),
+                topK: z.number().optional().describe("Number of results to return (default: 5)"),
+            }),
+            func: async ({ query, topK = 5 }) => {
+                try {
+                    const results = await ragService.search(query, topK);
+                    return JSON.stringify({
+                        success: true,
+                        results: results.map(r => ({
+                            text: r.text,
+                            score: r.score,
+                            metadata: r.metadata
+                        })),
+                        count: results.length
+                    });
+                } catch (error) {
+                    return JSON.stringify({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Unknown error'
+                    });
+                }
+            }
+        });
+
+        // Advanced RAG Search with Query Enhancement, Multi-Query Retrieval, and Reranking
+        const { advancedRetrieval } = await import('../rag/advanced-retrieval');
+
+        const advancedRagSearchTool = new DynamicStructuredTool({
+            name: "advanced_knowledge_search",
+            description: `Advanced knowledge base search with query enhancement and reranking.
+
+This is the RECOMMENDED tool for most searches. It uses:
+1. LLM-powered query enhancement (generates 3 optimized variations)
+2. Multi-strategy parallel retrieval (hybrid + semantic)
+3. Reciprocal Rank Fusion for result merging
+4. Semantic reranking for best relevance
+
+Use this for:
+- Complex or ambiguous queries
+- When you need the most relevant results
+- Queries about AI services, chatbots, RAG systems, multi-agent systems
+- Any important information retrieval
+
+Thematic options: 'ai_services', 'chatbot', 'rag_systems', 'multi_agent', 'general'`,
+            schema: z.object({
+                query: z.string().describe("The search query - can be simple or complex, the system will optimize it"),
+                topK: z.number().optional().describe("Number of results to return (default: 5)"),
+                thematic: z.enum(['ai_services', 'chatbot', 'rag_systems', 'multi_agent', 'general']).optional()
+                    .describe("Optional: Specify the domain for better query enhancement (auto-detected if not provided)"),
+                enableEnhancement: z.boolean().optional().describe("Enable query enhancement (default: true)"),
+                enableReranking: z.boolean().optional().describe("Enable semantic reranking (default: true)"),
+            }),
+            func: async ({ query, topK = 5, thematic, enableEnhancement = true, enableReranking = true }) => {
+                try {
+                    const results = await advancedRetrieval.advancedSearch(query, {
+                        topK,
+                        thematic: thematic as any,
+                        enableEnhancement,
+                        enableReranking,
+                    });
+
+                    return JSON.stringify({
+                        success: true,
+                        results: results.map(r => ({
+                            text: r.text,
+                            finalScore: r.scores.finalScore,
+                            fusedScore: r.scores.fusedScore,
+                            rerankScore: r.scores.rerankScore,
+                            metadata: r.metadata,
+                            // Show which strategies found this result
+                            retrievedBy: r.retrievedBy,
+                        })),
+                        count: results.length,
+                        meta: {
+                            enhancementEnabled: enableEnhancement,
+                            rerankingEnabled: enableReranking,
+                            thematic: thematic || 'auto-detected',
+                        }
+                    });
+                } catch (error) {
+                    return JSON.stringify({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Unknown error'
+                    });
+                }
+            }
+        });
+
+        this.tools = [...mcpTools, getCurrentDateTool, ragSearchTool, advancedRagSearchTool]; 
 
         // Create the ReAct agent with optimized prompt
         this.graph = createAgent({

@@ -1,51 +1,52 @@
-import * as tf from '@tensorflow/tfjs';
-import '@tensorflow/tfjs-backend-webgpu';
-import '@tensorflow/tfjs-backend-webgl';
-import '@tensorflow/tfjs-backend-cpu';
+/**
+ * TensorFlow.js initialization utilities
+ * This file is for client-side (browser) usage only
+ * For server-side initialization, use the tfjs-env helper in ai/rag/
+ */
+
+import { initializeTensorFlow, isServer } from '../ai/rag/tfjs-env';
 
 /**
  * Initialise TensorFlow.js avec le meilleur backend disponible
  * Ordre de préférence : WebGPU > WebGL > CPU
  * @returns Le nom du backend utilisé
+ * @throws Error if called on server-side
  */
 export async function initTfjsBackend(): Promise<string> {
-  // Liste des backends par ordre de préférence
-  const backends = ['webgpu', 'webgl', 'cpu'];
-
-  // Vérifier quels backends sont disponibles
-  const availableBackends = backends.filter(b => tf.findBackend(b) !== undefined);
-  console.log('Backends disponibles:', availableBackends);
-
-  for (const backend of availableBackends) {
-    try {
-      await tf.setBackend(backend);
-      await tf.ready();
-      const currentBackend = tf.getBackend();
-      console.log(`✅ TensorFlow.js utilise le backend: ${currentBackend}`);
-      return currentBackend;
-    } catch (error) {
-      console.warn(`Impossible d'initialiser le backend ${backend}:`, error);
-      continue;
-    }
+  if (isServer) {
+    throw new Error('initTfjsBackend() should only be called on the client-side. Use the RAG service initialization for server-side TensorFlow.js.');
   }
 
-  throw new Error('Aucun backend TensorFlow.js disponible');
+  const tf = await initializeTensorFlow();
+  const backend = tf.getBackend();
+  console.log(`✅ TensorFlow.js utilise le backend: ${backend}`);
+  return backend;
 }
 
 /**
  * Vérifie si WebGPU est disponible
  */
 export function isWebGPUAvailable(): boolean {
-  return 'gpu' in navigator;
+  if (isServer) {
+    return false;
+  }
+  return typeof navigator !== 'undefined' && 'gpu' in navigator;
 }
 
 /**
  * Récupère les informations sur le backend actuel
+ * @throws Error if called on server-side
  */
-export function getTfjsBackendInfo() {
+export async function getTfjsBackendInfo() {
+  if (isServer) {
+    throw new Error('getTfjsBackendInfo() should only be called on the client-side.');
+  }
+
+  // Dynamically import tf only on client-side
+  const tf = await import('@tensorflow/tfjs');
   const backend = tf.getBackend();
   const memory = tf.memory();
-  
+
   return {
     backend,
     numTensors: memory.numTensors,

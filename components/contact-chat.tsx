@@ -5,6 +5,7 @@ import { Send, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import QuerySuggestions from "./query-suggestions";
 
 interface Message {
 	role: "user" | "assistant";
@@ -17,6 +18,8 @@ export default function ContactChat() {
 	const [input, setInput] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [threadId] = useState(() => `thread-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+	const [suggestions, setSuggestions] = useState<string[]>([]);
+	const [suggestionThematic, setSuggestionThematic] = useState<string>("");
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	const scrollToBottom = () => {
@@ -38,14 +41,16 @@ export default function ContactChat() {
 		setMessages([welcomeMessage]);
 	}, [locale]);
 
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!input.trim() || isLoading) return;
+	const handleSubmit = async (e?: React.FormEvent, messageOverride?: string) => {
+		e?.preventDefault();
+		const messageToSend = messageOverride || input;
+		if (!messageToSend.trim() || isLoading) return;
 
-		const userMessage: Message = { role: "user", content: input };
+		const userMessage: Message = { role: "user", content: messageToSend };
 		setMessages((prev) => [...prev, userMessage]);
 		setInput("");
 		setIsLoading(true);
+		setSuggestions([]); // Clear suggestions when sending a new message
 
 		// Add placeholder for assistant response
 		const assistantMessageIndex = messages.length + 1;
@@ -56,7 +61,7 @@ export default function ContactChat() {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					message: input,
+					message: messageToSend,
 					threadId: threadId,
 				}),
 			});
@@ -109,7 +114,10 @@ export default function ContactChat() {
 										return newMessages;
 									});
 								}
-								break;
+							} else if (event.type === "query_suggestions") {
+								// Received query suggestions
+								setSuggestions(event.data.suggestions || []);
+								setSuggestionThematic(event.data.thematic || "");
 							} else if (event.type === "error") {
 								throw new Error(event.data.error || "Unknown error");
 							}
@@ -257,7 +265,21 @@ export default function ContactChat() {
 					<div ref={messagesEndRef} />
 				</div>
 
-				{/* Suggested Questions */}
+				{/* Query Suggestions from RAG */}
+				{suggestions.length > 0 && (
+					<div className="px-6 pb-3">
+						<QuerySuggestions
+							suggestions={suggestions}
+							thematic={suggestionThematic}
+							onSelectSuggestion={(suggestion) => {
+								handleSubmit(undefined, suggestion);
+							}}
+							isLoading={isLoading}
+						/>
+					</div>
+				)}
+
+				{/* Suggested Questions (Initial only) */}
 				{messages.length === 1 && (
 					<div className="px-6 py-3 bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700">
 						<p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">

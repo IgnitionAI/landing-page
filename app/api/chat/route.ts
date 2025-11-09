@@ -42,24 +42,58 @@ export async function POST(request: NextRequest) {
 
                     // Use the agent's streamStructured method
                     let fullResponse = '';
-                    
+                    let detectedThematic: string | undefined;
+
                     for await (const event of agent.streamStructured(message, finalThreadId)) {
                         sendEvent(event);
-                        
+
                         // Accumulate text for final response
                         if (event.type === 'thinking') {
                             fullResponse += event.data.content + '\n';
                         }
+
+                        // Detect thematic from advanced_knowledge_search tool calls
+                        if (event.type === 'tool_result' &&
+                            event.data.toolName === 'advanced_knowledge_search' &&
+                            event.data.result?.meta?.thematic) {
+                            detectedThematic = event.data.result.meta.thematic;
+                        }
                     }
+
+                    const trimmedResponse = fullResponse.trim();
 
                     // Send completion event
                     sendEvent({
                         type: 'complete',
                         data: {
                             threadId: finalThreadId,
-                            response: fullResponse.trim()
+                            response: trimmedResponse
                         }
                     });
+
+                    // Generate query suggestions after completion (await before closing stream)
+                    try {
+                        const { querySuggester } = await import('@/ai/rag/query-suggester');
+
+                        const suggestions = await querySuggester.suggestQueries({
+                            userQuery: message,
+                            agentResponse: trimmedResponse,
+                            thematic: detectedThematic as any,
+                        });
+
+                        // Send suggestions event
+                        sendEvent({
+                            type: 'query_suggestions',
+                            data: {
+                                suggestions: suggestions.suggestions,
+                                thematic: suggestions.thematic,
+                                confidence: suggestions.confidence,
+                            }
+                        });
+                    } catch (error) {
+                        console.error('[API] Failed to generate query suggestions:', error);
+                        // Don't fail the whole request if suggestions fail
+                    }
 
                 } catch (error) {
                     console.error('Error in SSE stream:', error);

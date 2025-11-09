@@ -15,10 +15,15 @@ export const metadata: Metadata = {
   description: "Transformez votre entreprise avec l'IA. Solutions d'automatisation, chatbots intelligents, et analyses prédictives pour propulser votre croissance.",
   keywords: ["IA", "Intelligence Artificielle", "Automatisation", "Chatbot", "Machine Learning", "Data Science"],
   authors: [{ name: "Ignition AI" }],
+  icons: {
+    icon: '/ignition_flame.gif',
+    apple: '/ignition_flame.gif',
+  },
   openGraph: {
     title: "Ignition AI - Intelligence Artificielle & Automatisation",
     description: "Transformez votre entreprise avec l'IA",
     type: "website",
+    images: [{ url: '/ignition_flame.gif', width: 1200, height: 630 }],
   },
 };
 
