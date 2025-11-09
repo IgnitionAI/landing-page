@@ -1,64 +1,94 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Search, Trash2, Loader2, Database } from "lucide-react";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { useVectorStore, type SimilarityResult } from "@/lib/store/vector-store";
-
-// Lazy load TensorFlow.js
-let tf: typeof import("@tensorflow/tfjs");
-let use: any;
+import {
+	useVectorStore,
+	type SimilarityResult,
+	type SearchMode,
+} from "@/lib/store/vector-store";
+import * as tf from "@tensorflow/tfjs";
+import * as use from "@tensorflow-models/universal-sentence-encoder";
+import { initTfjsBackend } from "@/lib/tfjs-init";
 
 export default function VectorDbDemo() {
 	const { t } = useI18n();
-	const { vectors, isModelLoaded, addVector, clearVectors, findSimilar, setModelLoaded } =
-		useVectorStore();
+	const {
+		vectors,
+		isModelLoaded,
+		addVector,
+		clearVectors,
+		findSimilar,
+		findLexical,
+		findHybrid,
+		setModelLoaded,
+		loadVectorsFromAzure,
+		isLoadingVectors,
+	} = useVectorStore();
 
+	const [model, setModel] = useState<use.UniversalSentenceEncoder | null>(null);
 	const [input, setInput] = useState("");
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [loadingModel, setLoadingModel] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [similarResults, setSimilarResults] = useState<SimilarityResult[]>([]);
+	const [searchMode, setSearchMode] = useState<SearchMode>("semantic");
+	const [alpha, setAlpha] = useState(0.5);
+
+	// Load vectors from Azure on mount
+	useEffect(() => {
+		if (vectors.length === 0 && !isLoadingVectors) {
+			loadVectorsFromAzure().catch((err) => {
+				console.warn("Could not load vectors from Azure:", err);
+				// Don't set error state, Azure is optional
+			});
+		}
+	}, [vectors.length, isLoadingVectors, loadVectorsFromAzure]);
 
 	// Load TensorFlow.js and Universal Sentence Encoder
 	useEffect(() => {
-		const loadModel = async () => {
+		const initModel = async () => {
 			try {
 				setLoadingModel(true);
 				setError(null);
 
-				// Dynamically import TensorFlow.js
-				tf = await import("@tensorflow/tfjs");
-				const useModule = await import("@tensorflow-models/universal-sentence-encoder");
+				// Initialize TensorFlow.js with best available backend
+				await initTfjsBackend();
 
-				// Load the model
-				use = await useModule.load();
+				// Load Universal Sentence Encoder
+				const loadedModel = await use.load();
+				setModel(loadedModel);
+				console.log("Model loaded");
 				setModelLoaded(true);
 				setLoadingModel(false);
-			} catch (err) {
-				console.error("Error loading TensorFlow model:", err);
+			} catch (error) {
+				console.error("Error loading model:", error);
 				setError("Failed to load AI model. Please refresh and try again.");
 				setLoadingModel(false);
 			}
 		};
 
-		if (!isModelLoaded) {
-			loadModel();
-		} else {
-			setLoadingModel(false);
+		if (!model) {
+			initModel();
 		}
-	}, [isModelLoaded, setModelLoaded]);
+
+		return () => {
+			tf.dispose();
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const handleAddText = async () => {
-		if (!input.trim() || !isModelLoaded || !use) return;
+		if (!input.trim() || !isModelLoaded || !model) return;
 
 		setIsLoading(true);
 		setError(null);
 
 		try {
 			// Generate embedding
-			const embeddings = await use.embed([input]);
+			const embeddings = await model.embed([input]);
 			const embeddingArray = await embeddings.array();
 
 			// Add to store
@@ -68,6 +98,9 @@ export default function VectorDbDemo() {
 				embedding: embeddingArray[0],
 				timestamp: Date.now(),
 			});
+
+			// Dispose embeddings to free memory
+			embeddings.dispose();
 
 			setInput("");
 			setSimilarResults([]);
@@ -80,19 +113,48 @@ export default function VectorDbDemo() {
 	};
 
 	const handleSearch = async () => {
-		if (!searchQuery.trim() || !isModelLoaded || !use || vectors.length === 0) return;
+		if (!searchQuery.trim() || vectors.length === 0) return;
+
+		// Lexical search doesn't need model loaded
+		if (searchMode === "lexical") {
+			setIsLoading(true);
+			setError(null);
+
+			try {
+				const similar = findLexical(searchQuery, 3);
+				setSimilarResults(similar);
+			} catch (err) {
+				console.error("Error searching:", err);
+				setError("Failed to search. Please try again.");
+			} finally {
+				setIsLoading(false);
+			}
+			return;
+		}
+
+		// Semantic and hybrid need embeddings
+		if (!isModelLoaded || !model) return;
 
 		setIsLoading(true);
 		setError(null);
 
 		try {
 			// Generate embedding for search query
-			const embeddings = await use.embed([searchQuery]);
+			const embeddings = await model.embed([searchQuery]);
 			const embeddingArray = await embeddings.array();
 
-			// Find similar vectors
-			const similar = findSimilar(embeddingArray[0], 3);
+			// Find similar vectors based on mode
+			let similar: SimilarityResult[];
+			if (searchMode === "semantic") {
+				similar = findSimilar(embeddingArray[0], 3);
+			} else {
+				// hybrid mode
+				similar = findHybrid(searchQuery, embeddingArray[0], alpha, 3);
+			}
 			setSimilarResults(similar);
+
+			// Dispose embeddings to free memory
+			embeddings.dispose();
 		} catch (err) {
 			console.error("Error searching:", err);
 			setError("Failed to search. Please try again.");
@@ -105,18 +167,36 @@ export default function VectorDbDemo() {
 		return (
 			<div className="flex flex-col items-center justify-center p-8 space-y-4">
 				<Loader2 className="w-12 h-12 text-purple-500 animate-spin" />
-				<p className="text-sm text-gray-600 dark:text-gray-400">
-					Loading AI model (TensorFlow.js)...
-				</p>
-				<p className="text-xs text-gray-500 dark:text-gray-500">This may take a few seconds</p>
+				<div className="text-center space-y-2">
+					<p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+						Loading AI model (Universal Sentence Encoder)
+					</p>
+					<p className="text-xs text-gray-500 dark:text-gray-500">
+						Downloading ~50MB model, this may take 10-30 seconds...
+					</p>
+					<div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+						<p className="text-xs text-blue-700 dark:text-blue-300">
+							💡 The model is cached after first load
+						</p>
+					</div>
+				</div>
 			</div>
 		);
 	}
 
 	if (error && !isModelLoaded) {
 		return (
-			<div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+			<div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg space-y-3">
 				<p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+				<button
+					onClick={() => {
+						setError(null);
+						setModelLoaded(false);
+						window.location.reload();
+					}}
+					className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-all text-sm font-medium">
+					Retry Loading Model
+				</button>
 			</div>
 		);
 	}
@@ -132,6 +212,24 @@ export default function VectorDbDemo() {
 					</h4>
 					<p className="text-xs text-purple-700 dark:text-purple-300">{t.vectorDb.desc}</p>
 				</div>
+
+				{/* Azure Status */}
+				{isLoadingVectors && (
+					<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-center gap-2">
+						<Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+						<span className="text-xs text-blue-700 dark:text-blue-300">
+							Loading vectors from Azure Table Storage...
+						</span>
+					</div>
+				)}
+				{!isLoadingVectors && vectors.length > 0 && (
+					<div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+						<Database className="w-4 h-4 text-green-500" />
+						<span className="text-xs text-green-700 dark:text-green-300">
+							{vectors.length} vectors loaded from Azure
+						</span>
+					</div>
+				)}
 
 			{/* Add Text */}
 			<div className="space-y-2">
@@ -164,10 +262,75 @@ export default function VectorDbDemo() {
 
 			{/* Search */}
 			{vectors.length > 0 && (
-				<div className="space-y-2">
+				<div className="space-y-3">
 					<label className="text-sm font-medium text-gray-700 dark:text-gray-300">
 						Find similar sentences:
 					</label>
+
+					{/* Search Mode Selector */}
+					<div className="space-y-2">
+						<label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+							Search Mode:
+						</label>
+						<div className="flex space-x-2">
+							<button
+								onClick={() => setSearchMode("semantic")}
+								className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+									searchMode === "semantic"
+										? "bg-purple-500 text-white shadow-md"
+										: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+								}`}>
+								Semantic
+							</button>
+							<button
+								onClick={() => setSearchMode("lexical")}
+								className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+									searchMode === "lexical"
+										? "bg-pink-500 text-white shadow-md"
+										: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+								}`}>
+								Lexical (BM25)
+							</button>
+							<button
+								onClick={() => setSearchMode("hybrid")}
+								className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+									searchMode === "hybrid"
+										? "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md"
+										: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+								}`}>
+								Hybrid
+							</button>
+						</div>
+					</div>
+
+					{/* Alpha Slider for Hybrid Mode */}
+					{searchMode === "hybrid" && (
+						<div className="space-y-2 p-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+							<div className="flex justify-between items-center">
+								<label className="text-xs font-medium text-purple-700 dark:text-purple-300">
+									Weight Balance:
+								</label>
+								<span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
+									{(alpha * 100).toFixed(0)}% Semantic / {((1 - alpha) * 100).toFixed(0)}%
+									Lexical
+								</span>
+							</div>
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.05"
+								value={alpha}
+								onChange={(e) => setAlpha(parseFloat(e.target.value))}
+								className="w-full h-2 bg-gradient-to-r from-pink-200 to-purple-200 rounded-lg appearance-none cursor-pointer slider"
+							/>
+							<div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+								<span>More Lexical</span>
+								<span>More Semantic</span>
+							</div>
+						</div>
+					)}
+
 					<div className="flex space-x-2">
 						<input
 							type="text"
@@ -229,7 +392,7 @@ export default function VectorDbDemo() {
 
 							return (
 								<div
-									key={result.id}
+									key={`${result.id}-${idx}`}
 									className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg hover:shadow-md transition-shadow">
 									<div className="flex items-start justify-between mb-2">
 										<span className="text-xs font-bold text-purple-600 dark:text-purple-400">
@@ -247,13 +410,62 @@ export default function VectorDbDemo() {
 									<p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
 										{result.text}
 									</p>
-									<div className="mt-2 pt-2 border-t border-purple-200 dark:border-purple-700">
-										<div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-											<div
-												className={`h-1.5 rounded-full ${similarityColor}`}
-												style={{ width: `${similarityPercent}%` }}
-											/>
+
+									{/* Score Breakdown */}
+									<div className="mt-3 space-y-2">
+										{/* Overall Score */}
+										<div className="pt-2 border-t border-purple-200 dark:border-purple-700">
+											<div className="flex justify-between items-center mb-1">
+												<span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+													Overall Score:
+												</span>
+												<span className="text-xs font-bold text-purple-700 dark:text-purple-300">
+													{similarityPercent}%
+												</span>
+											</div>
+											<div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+												<div
+													className={`h-1.5 rounded-full ${similarityColor}`}
+													style={{ width: `${similarityPercent}%` }}
+												/>
+											</div>
 										</div>
+
+										{/* Detailed Scores for Hybrid */}
+										{searchMode === "hybrid" &&
+											result.semanticScore !== undefined &&
+											result.lexicalScore !== undefined && (
+												<div className="space-y-1.5 text-xs">
+													<div className="flex justify-between items-center">
+														<span className="text-purple-600 dark:text-purple-400">
+															→ Semantic:
+														</span>
+														<span className="font-semibold">
+															{(result.semanticScore * 100).toFixed(1)}%
+														</span>
+													</div>
+													<div className="flex justify-between items-center">
+														<span className="text-pink-600 dark:text-pink-400">
+															→ Lexical:
+														</span>
+														<span className="font-semibold">
+															{(result.lexicalScore * 100).toFixed(1)}%
+														</span>
+													</div>
+												</div>
+											)}
+
+										{/* Show which score type for single mode */}
+										{searchMode === "semantic" && result.semanticScore !== undefined && (
+											<div className="text-xs text-purple-600 dark:text-purple-400">
+												Semantic similarity (cosine)
+											</div>
+										)}
+										{searchMode === "lexical" && result.lexicalScore !== undefined && (
+											<div className="text-xs text-pink-600 dark:text-pink-400">
+												Lexical match (BM25)
+											</div>
+										)}
 									</div>
 								</div>
 							);
@@ -277,9 +489,9 @@ export default function VectorDbDemo() {
 						</button>
 					</div>
 					<div className="space-y-2 max-h-48 overflow-y-auto">
-						{vectors.map((vector) => (
+						{vectors.map((vector, idx) => (
 							<div
-								key={vector.id}
+								key={`${vector.id}-${idx}`}
 								className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
 								<p className="text-sm text-gray-800 dark:text-gray-200">{vector.text}</p>
 								<p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
