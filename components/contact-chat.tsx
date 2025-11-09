@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Send, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
 	role: "user" | "assistant";
@@ -15,6 +16,7 @@ export default function ContactChat() {
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [input, setInput] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
+	const [threadId] = useState(() => `thread-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	const scrollToBottom = () => {
@@ -25,60 +27,16 @@ export default function ContactChat() {
 		scrollToBottom();
 	}, [messages]);
 
-	// Message de bienvenue initial
 	useEffect(() => {
 		const welcomeMessage: Message = {
 			role: "assistant",
 			content:
 				locale === "fr"
-					? "👋 Bonjour ! Je suis l'assistant virtuel d'**IgnitionAI**.\n\nJe suis là pour répondre à toutes vos questions sur nos services d'intelligence artificielle :\n\n- 🔮 **Systèmes RAG** pour valoriser vos données\n- 💬 **Chatbots intelligents** pour votre support client\n- 🧠 **Solutions LLM** sur mesure\n- 🤖 **Systèmes multi-agents** pour automatiser vos processus\n\nComment puis-je vous aider aujourd'hui ?"
-					: "👋 Hello! I'm **IgnitionAI**'s virtual assistant.\n\nI'm here to answer all your questions about our artificial intelligence services:\n\n- 🔮 **RAG Systems** to leverage your data\n- 💬 **Intelligent chatbots** for customer support\n- 🧠 **Custom LLM solutions**\n- 🤖 **Multi-agent systems** to automate processes\n\nHow can I help you today?",
+					? "👋 Bonjour ! Je suis l'**Agent IA d'IgnitionAI**.\n\nJe dispose de plusieurs outils spécialisés :\n\n- 🔍 **Vector Store RAG** : Recherche sémantique dans notre base de connaissances\n- ✈️ **Amadeus Travel** : Recherche de vols, hôtels et activités (capitales européennes)\n- 🥗 **Nutrition API** : Profils nutritionnels personnalisés\n\nJe peux aussi vous renseigner sur nos services d'IA :\n- 🔮 **Systèmes RAG** • 💬 **Chatbots** • 🧠 **Solutions LLM** • 🤖 **Multi-agents**\n\nComment puis-je vous aider ?"
+					: "👋 Hello! I'm **IgnitionAI's AI Agent**.\n\nI have access to specialized tools:\n\n- 🔍 **Vector Store RAG**: Semantic search in our knowledge base\n- ✈️ **Amadeus Travel**: Flights, hotels & activities (European capitals)\n- 🥗 **Nutrition API**: Personalized nutrition profiles\n\nI can also inform you about our AI services:\n- 🔮 **RAG Systems** • 💬 **Chatbots** • 🧠 **LLM Solutions** • 🤖 **Multi-agents**\n\nHow can I help you?",
 		};
 		setMessages([welcomeMessage]);
 	}, [locale]);
-
-	const systemPrompt =
-		locale === "fr"
-			? `Tu es un assistant commercial expert pour IgnitionAI, une entreprise française spécialisée dans l'intelligence artificielle.
-
-Ton rôle est de:
-1. Présenter nos 4 services principaux avec enthousiasme:
-   - **Systèmes RAG Entreprise**: Intégration de données propriétaires avec LLMs pour 85%+ de précision
-   - **Agents Conversationnels**: Chatbots LLM avec réduction de 70% des coûts support
-   - **Solutions LLM**: Implémentations GPT-4, Claude, LLaMA personnalisées
-   - **Systèmes Multi-Agents**: LangChain/AutoGPT pour automatisation à 80%
-
-2. Qualifier les prospects en posant des questions sur:
-   - Leur secteur d'activité
-   - Leurs besoins spécifiques en IA
-   - Leur budget approximatif
-   - Leur timeline de projet
-
-3. Être professionnel mais accessible, utiliser des émojis avec modération
-4. Proposer un appel technique quand le prospect est qualifié
-5. Mentionner nos certifications TensorFlow et notre expertise en déploiement LLM entreprise
-
-Sois concis (max 150 mots par réponse) et propose toujours une prochaine étape concrète.`
-			: `You are an expert sales assistant for IgnitionAI, a French company specializing in artificial intelligence.
-
-Your role is to:
-1. Present our 4 main services enthusiastically:
-   - **Enterprise RAG Systems**: Integration of proprietary data with LLMs for 85%+ accuracy
-   - **Conversational Agents**: LLM chatbots with 70% reduction in support costs
-   - **LLM Solutions**: Customized GPT-4, Claude, LLaMA implementations
-   - **Multi-Agent Systems**: LangChain/AutoGPT for 80% automation
-
-2. Qualify prospects by asking about:
-   - Their industry
-   - Their specific AI needs
-   - Their approximate budget
-   - Their project timeline
-
-3. Be professional but approachable, use emojis moderately
-4. Suggest a technical call when the prospect is qualified
-5. Mention our TensorFlow certifications and enterprise LLM deployment expertise
-
-Be concise (max 150 words per response) and always suggest a concrete next step.`;
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -89,30 +47,76 @@ Be concise (max 150 words per response) and always suggest a concrete next step.
 		setInput("");
 		setIsLoading(true);
 
+		// Add placeholder for assistant response
+		const assistantMessageIndex = messages.length + 1;
+		setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
 		try {
-			const response = await fetch("/api/openai", {
+			const response = await fetch("/api/chat", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					messages: [
-						{ role: "system", content: systemPrompt },
-						...messages,
-						userMessage,
-					],
+					message: input,
+					threadId: threadId,
 				}),
 			});
 
-			const data = await response.json();
-
-			if (data.error) {
-				throw new Error(data.error);
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
 			}
 
-			const assistantMessage: Message = {
-				role: "assistant",
-				content: data.message,
-			};
-			setMessages((prev) => [...prev, assistantMessage]);
+			// Handle Server-Sent Events streaming
+			const reader = response.body?.getReader();
+			const decoder = new TextDecoder();
+			let accumulatedContent = "";
+
+			if (reader) {
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					const chunk = decoder.decode(value);
+					const lines = chunk.split("\n");
+
+					for (const line of lines) {
+						if (line.startsWith("data: ")) {
+							const event = JSON.parse(line.slice(6));
+
+							if (event.type === "start") {
+								// Stream started
+								console.log("Stream started:", event.data);
+							} else if (event.type === "thinking") {
+								// Update with thinking content
+								accumulatedContent = event.data.content;
+								setMessages((prev) => {
+									const newMessages = [...prev];
+									newMessages[assistantMessageIndex] = {
+										role: "assistant",
+										content: accumulatedContent,
+									};
+									return newMessages;
+								});
+							} else if (event.type === "complete") {
+								// Stream completed with final response
+								if (event.data.response) {
+									accumulatedContent = event.data.response;
+									setMessages((prev) => {
+										const newMessages = [...prev];
+										newMessages[assistantMessageIndex] = {
+											role: "assistant",
+											content: accumulatedContent,
+										};
+										return newMessages;
+									});
+								}
+								break;
+							} else if (event.type === "error") {
+								throw new Error(event.data.error || "Unknown error");
+							}
+						}
+					}
+				}
+			}
 		} catch (error) {
 			console.error("Chat error:", error);
 			const errorMessage: Message = {
@@ -122,7 +126,11 @@ Be concise (max 150 words per response) and always suggest a concrete next step.
 						? "Désolé, une erreur s'est produite. Veuillez réessayer ou nous contacter directement à contact@ignitionai.com"
 						: "Sorry, an error occurred. Please try again or contact us directly at contact@ignitionai.com",
 			};
-			setMessages((prev) => [...prev, errorMessage]);
+			setMessages((prev) => {
+				const newMessages = [...prev];
+				newMessages[assistantMessageIndex] = errorMessage;
+				return newMessages;
+			});
 		} finally {
 			setIsLoading(false);
 		}
@@ -131,16 +139,16 @@ Be concise (max 150 words per response) and always suggest a concrete next step.
 	const suggestedQuestions =
 		locale === "fr"
 			? [
-					"Quels sont vos tarifs pour un chatbot ?",
-					"Comment fonctionne un système RAG ?",
-					"Pouvez-vous m'aider avec mon projet IA ?",
-					"Combien de temps prend un déploiement ?",
+					"Qu'est-ce que la recherche sémantique ?",
+					"Trouve-moi un vol Paris-Londres",
+					"Crée mon profil nutritionnel",
+					"Quels sont vos services IA ?",
 			  ]
 			: [
-					"What are your chatbot pricing?",
-					"How does a RAG system work?",
-					"Can you help with my AI project?",
-					"How long does deployment take?",
+					"What is semantic search?",
+					"Find me a flight Paris-London",
+					"Create my nutrition profile",
+					"What are your AI services?",
 			  ];
 
 	return (
@@ -177,26 +185,48 @@ Be concise (max 150 words per response) and always suggest a concrete next step.
 										: "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-md border border-gray-100 dark:border-gray-700 mr-8"
 								}`}>
 								{msg.role === "assistant" ? (
-									<div className="prose prose-sm dark:prose-invert max-w-none [&>p]:my-2 [&>ul]:my-2 [&>ol]:my-2">
+									<div className="prose prose-sm dark:prose-invert max-w-none">
 										<ReactMarkdown
+											remarkPlugins={[remarkGfm]}
 											components={{
 												p: ({ children }) => (
-													<p className="text-sm leading-relaxed my-2">{children}</p>
+													<p className="text-sm leading-relaxed my-2 text-gray-900 dark:text-gray-100">{children}</p>
 												),
 												ul: ({ children }) => (
-													<ul className="text-sm list-disc list-inside my-2 space-y-1">
+													<ul className="text-sm list-disc pl-5 my-2 space-y-1 text-gray-900 dark:text-gray-100">
 														{children}
 													</ul>
 												),
 												ol: ({ children }) => (
-													<ol className="text-sm list-decimal list-inside my-2 space-y-1">
+													<ol className="text-sm list-decimal pl-5 my-2 space-y-1 text-gray-900 dark:text-gray-100">
 														{children}
 													</ol>
 												),
-												strong: ({ children }) => (
-													<strong className="font-semibold">{children}</strong>
+												li: ({ children }) => (
+													<li className="text-sm leading-relaxed text-gray-900 dark:text-gray-100">{children}</li>
 												),
-												em: ({ children }) => <em className="italic">{children}</em>,
+												strong: ({ children }) => (
+													<strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>
+												),
+												em: ({ children }) => <em className="italic text-gray-900 dark:text-gray-100">{children}</em>,
+												h1: ({ children }) => (
+													<h1 className="text-lg font-bold my-2 text-gray-900 dark:text-gray-100">{children}</h1>
+												),
+												h2: ({ children }) => (
+													<h2 className="text-base font-bold my-2 text-gray-900 dark:text-gray-100">{children}</h2>
+												),
+												h3: ({ children }) => (
+													<h3 className="text-sm font-bold my-2 text-gray-900 dark:text-gray-100">{children}</h3>
+												),
+												code: ({ children }) => (
+													<code className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-xs text-gray-900 dark:text-gray-100">{children}</code>
+												),
+												pre: ({ children }) => (
+													<pre className="bg-gray-100 dark:bg-gray-700 p-2 rounded my-2 overflow-x-auto text-xs text-gray-900 dark:text-gray-100">{children}</pre>
+												),
+												a: ({ children, href }) => (
+													<a href={href} className="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>
+												),
 											}}>
 											{msg.content}
 										</ReactMarkdown>
@@ -278,10 +308,6 @@ Be concise (max 150 words per response) and always suggest a concrete next step.
 				<div className="flex items-center space-x-2">
 					<div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
 					<span>{locale === "fr" ? "En ligne maintenant" : "Online now"}</span>
-				</div>
-				<div>
-					{locale === "fr" ? "Réponse moyenne: " : "Average response: "}
-					<span className="font-semibold text-white">~500ms</span>
 				</div>
 				<div>
 					{locale === "fr" ? "Agent IA " : "AI Agent "}
