@@ -228,18 +228,44 @@ export const messages = {
 		},
 		about: {
 			title: "About Us",
+			subtitle: "Specialized AI consultancy focused on practical business applications",
 			missionTitle: "Our Mission",
 			expertiseTitle: "Our Expertise",
 			approachTitle: "Our Approach",
 			getInTouch: "Get in touch",
 			description:
 				"Specialized AI consultancy focused on practical business applications of language models and intelligent systems. TensorFlow certified developers with experience in enterprise LLM deployments.",
-			mission:
-				"We bridge the gap between cutting-edge AI technology and business needs through practical, production-ready solutions.",
-			expertise:
-				"Our team combines deep technical expertise in LLMs, RAG systems, and multi-agent architectures with real-world implementation experience.",
-			approach:
-				"We focus on delivering measurable business value through carefully architected AI solutions that are secure, scalable, and cost-effective.",
+			mission: {
+				title: "Our Mission",
+				description:
+					"We bridge the gap between cutting-edge AI technology and business needs through practical, production-ready solutions.",
+			},
+			expertise: {
+				title: "Our Expertise",
+				items: [
+					"TensorFlow certified developers with enterprise LLM deployment experience",
+					"Deep expertise in RAG systems and vector database optimization",
+					"Production-grade multi-agent architecture implementation",
+					"Fine-tuning and custom model development",
+					"End-to-end AI solution architecture and deployment",
+				],
+			},
+			approach: {
+				title: "Our Approach",
+				description:
+					"We focus on delivering measurable business value through carefully architected AI solutions that are secure, scalable, and cost-effective.",
+				items: [
+					"Requirements analysis and feasibility study",
+					"Proof of concept and rapid prototyping",
+					"Production deployment with monitoring",
+					"Continuous optimization and support",
+				],
+			},
+			cta: {
+				title: "Ready to Start Your AI Journey?",
+				description: "Let's discuss how we can help transform your business with AI",
+				button: "Get in Touch",
+			},
 		},
 		resources: {
 			title: "Technical Resources",
@@ -515,18 +541,44 @@ export const messages = {
 		},
 		about: {
 			title: "À propos",
+			subtitle: "Cabinet de conseil spécialisé en applications pratiques de l'IA",
 			missionTitle: "Notre Mission",
 			expertiseTitle: "Notre Expertise",
 			approachTitle: "Notre Approche",
 			getInTouch: "Contactez-nous",
 			description:
 				"Cabinet de conseil spécialisé en IA focalisé sur les applications métier pratiques des modèles de langage et systèmes intelligents. Développeurs certifiés TensorFlow avec expérience en déploiement LLM entreprise.",
-			mission:
-				"Nous comblons le fossé entre la technologie IA de pointe et les besoins métier par des solutions pratiques et prêtes pour la production.",
-			expertise:
-				"Notre équipe combine une expertise technique pointue en LLMs, systèmes RAG et architectures multi-agents avec une expérience concrète d'implémentation.",
-			approach:
-				"Nous nous concentrons sur la création de valeur mesurable à travers des solutions IA soigneusement architecturées, sécurisées, évolutives et rentables.",
+			mission: {
+				title: "Notre Mission",
+				description:
+					"Nous comblons le fossé entre la technologie IA de pointe et les besoins métier par des solutions pratiques et prêtes pour la production.",
+			},
+			expertise: {
+				title: "Notre Expertise",
+				items: [
+					"Développeurs certifiés TensorFlow avec expérience en déploiement LLM entreprise",
+					"Expertise approfondie en systèmes RAG et optimisation de bases vectorielles",
+					"Implémentation d'architectures multi-agents de niveau production",
+					"Fine-tuning et développement de modèles personnalisés",
+					"Architecture et déploiement de solutions IA de bout en bout",
+				],
+			},
+			approach: {
+				title: "Notre Approche",
+				description:
+					"Nous nous concentrons sur la création de valeur mesurable à travers des solutions IA soigneusement architecturées, sécurisées, évolutives et rentables.",
+				items: [
+					"Analyse des besoins et étude de faisabilité",
+					"Preuve de concept et prototypage rapide",
+					"Déploiement en production avec monitoring",
+					"Optimisation continue et support",
+				],
+			},
+			cta: {
+				title: "Prêt à Commencer Votre Parcours IA ?",
+				description: "Discutons de comment nous pouvons transformer votre entreprise avec l'IA",
+				button: "Contactez-nous",
+			},
 		},
 		resources: {
 			title: "Ressources Techniques",
